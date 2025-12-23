@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Simulations Lab</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --secondary: #ec4899;
+            --accent: #06b6d4;
+            --bg-dark: #0f172a;
+            --bg-card: #1e293b;
+            --bg-card-hover: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --border-color: #334155;
+            --success: #10b981;
+            --warning: #f59e0b;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Animated Background */
+        .bg-animation {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            overflow: hidden;
+        }
+
+        .bg-animation::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at 20% 80%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
+                        radial-gradient(circle at 80% 20%, rgba(236, 72, 153, 0.1) 0%, transparent 50%),
+                        radial-gradient(circle at 40% 40%, rgba(6, 182, 212, 0.1) 0%, transparent 40%);
+            animation: bgFloat 20s ease-in-out infinite;
+        }
+
+        @keyframes bgFloat {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            33% { transform: translate(2%, 2%) rotate(1deg); }
+            66% { transform: translate(-1%, 1%) rotate(-1deg); }
+        }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            padding: 1rem 2rem;
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            -webkit-text-fill-color: white;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+        }
+
+        .nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s ease;
+            position: relative;
+        }
+
+        .nav-links a:hover {
+            color: var(--text-primary);
+        }
+
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            transition: width 0.3s ease;
+        }
+
+        .nav-links a:hover::after {
+            width: 100%;
+        }
+
+        /* Hero Section */
+        .hero {
+            padding: 8rem 2rem 4rem;
+            text-align: center;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .hero h1 {
+            font-size: 3.5rem;
+            font-weight: 800;
+            margin-bottom: 1.5rem;
+            line-height: 1.2;
+        }
+
+        .hero h1 span {
+            background: linear-gradient(135deg, var(--primary), var(--secondary), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero p {
+            font-size: 1.25rem;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto 2rem;
+            line-height: 1.8;
+        }
+
+        .hero-stats {
+            display: flex;
+            justify-content: center;
+            gap: 3rem;
+            margin-top: 3rem;
+        }
+
+        .stat {
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+        }
+
+        /* Category Filter */
+        .category-filter {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            padding: 0 2rem;
+            margin-bottom: 3rem;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            padding: 0.75rem 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 50px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .filter-btn:hover, .filter-btn.active {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-color: transparent;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(99, 102, 241, 0.3);
+        }
+
+        /* Cards Grid */
+        .section-title {
+            text-align: center;
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .section-subtitle {
+            text-align: center;
+            color: var(--text-secondary);
+            margin-bottom: 3rem;
+        }
+
+        .cards-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 2rem 4rem;
+        }
+
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 2rem;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border-radius: 20px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            cursor: pointer;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+            position: relative;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-10px);
+            border-color: var(--primary);
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3),
+                        0 0 0 1px rgba(99, 102, 241, 0.1);
+        }
+
+        .card:hover::before {
+            opacity: 1;
+        }
+
+        .card-preview {
+            height: 200px;
+            background: linear-gradient(135deg, var(--bg-card-hover), var(--bg-dark));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card-preview-icon {
+            font-size: 4rem;
+            opacity: 0.8;
+            transition: transform 0.4s ease;
+        }
+
+        .card:hover .card-preview-icon {
+            transform: scale(1.2);
+        }
+
+        .card-preview-animation {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Physics Card Animation */
+        .physics-balls {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+        }
+
+        .physics-ball {
+            position: absolute;
+            border-radius: 50%;
+            animation: bounce 2s ease-in-out infinite;
+        }
+
+        .physics-ball:nth-child(1) {
+            width: 30px;
+            height: 30px;
+            background: linear-gradient(135deg, #ef4444, #f97316);
+            left: 20%;
+            animation-delay: 0s;
+        }
+
+        .physics-ball:nth-child(2) {
+            width: 25px;
+            height: 25px;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            left: 50%;
+            animation-delay: 0.5s;
+        }
+
+        .physics-ball:nth-child(3) {
+            width: 35px;
+            height: 35px;
+            background: linear-gradient(135deg, #10b981, #06b6d4);
+            left: 75%;
+            animation-delay: 1s;
+        }
+
+        @keyframes bounce {
+            0%, 100% { 
+                top: 20%;
+                transform: scale(1);
+            }
+            50% { 
+                top: 60%;
+                transform: scale(0.9);
+            }
+        }
+
+        .card-content {
+            padding: 1.5rem;
+        }
+
+        .card-badge {
+            display: inline-block;
+            padding: 0.35rem 0.75rem;
+            background: rgba(99, 102, 241, 0.2);
+            color: var(--primary);
+            border-radius: 50px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        .card-badge.new {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--success);
+        }
+
+        .card-badge.coming {
+            background: rgba(245, 158, 11, 0.2);
+            color: var(--warning);
+        }
+
+        .card h3 {
+            font-size: 1.4rem;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .card p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin-bottom: 1.5rem;
+        }
+
+        .card-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .card-tags {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .tag {
+            padding: 0.25rem 0.6rem;
+            background: var(--bg-dark);
+            border-radius: 5px;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .card-arrow {
+            width: 40px;
+            height: 40px;
+            background: var(--bg-dark);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .card:hover .card-arrow {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            transform: translateX(5px);
+        }
+
+        /* Coming Soon Card */
+        .card.coming-soon {
+            opacity: 0.7;
+        }
+
+        .card.coming-soon:hover {
+            transform: translateY(-5px);
+        }
+
+        .card.coming-soon .card-preview {
+            background: repeating-linear-gradient(
+                45deg,
+                var(--bg-card-hover),
+                var(--bg-card-hover) 10px,
+                var(--bg-dark) 10px,
+                var(--bg-dark) 20px
+            );
+        }
+
+        /* Wave Animation for Coming Soon */
+        .wave-animation {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 200%;
+            height: 60px;
+            background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 120'%3E%3Cpath fill='%231e293b' d='M0,60 C300,100 600,20 900,60 C1200,100 1200,60 1200,60 L1200,120 L0,120 Z'/%3E%3C/svg%3E");
+            background-size: 600px 60px;
+            animation: wave 4s linear infinite;
+        }
+
+        @keyframes wave {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-600px); }
+        }
+
+        /* Newsletter Section */
+        .newsletter {
+            max-width: 600px;
+            margin: 4rem auto;
+            padding: 3rem;
+            background: var(--bg-card);
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
+            text-align: center;
+        }
+
+        .newsletter h3 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .newsletter p {
+            color: var(--text-secondary);
+            margin-bottom: 1.5rem;
+        }
+
+        .newsletter-form {
+            display: flex;
+            gap: 1rem;
+            max-width: 400px;
+            margin: 0 auto;
+        }
+
+        .newsletter-form input {
+            flex: 1;
+            padding: 1rem 1.5rem;
+            background: var(--bg-dark);
+            border: 1px solid var(--border-color);
+            border-radius: 50px;
+            color: var(--text-primary);
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.3s ease;
+        }
+
+        .newsletter-form input:focus {
+            border-color: var(--primary);
+        }
+
+        .newsletter-form button {
+            padding: 1rem 2rem;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border: none;
+            border-radius: 50px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .newsletter-form button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 30px rgba(99, 102, 241, 0.4);
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 3rem 2rem;
+            border-top: 1px solid var(--border-color);
+            color: var(--text-secondary);
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .footer-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+
+        .footer-links a:hover {
+            color: var(--primary);
+        }
+
+        .social-links {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .social-links a {
+            width: 45px;
+            height: 45px;
+            background: var(--bg-card);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: all 0.3s ease;
+            font-size: 1.2rem;
+        }
+
+        .social-links a:hover {
+            background: var(--primary);
+            color: white;
+            transform: translateY(-3px);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+
+            .hero-stats {
+                gap: 1.5rem;
+            }
+
+            .stat-number {
+                font-size: 2rem;
+            }
+
+            .cards-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .nav-links {
+                display: none;
+            }
+
+            .newsletter-form {
+                flex-direction: column;
+            }
+
+            .category-filter {
+                gap: 0.5rem;
+            }
+
+            .filter-btn {
+                padding: 0.5rem 1rem;
+                font-size: 0.8rem;
+            }
+        }
+
+        /* Search Bar */
+        .search-container {
+            max-width: 500px;
+            margin: 0 auto 2rem;
+            position: relative;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 1rem 1.5rem 1rem 3rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 50px;
+            color: var(--text-primary);
+            font-size: 1rem;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .search-input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 1.25rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-secondary);
+        }
+
+        /* Floating Action Button */
+        .fab {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            box-shadow: 0 10px 30px rgba(99, 102, 241, 0.4);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .fab:hover {
+            transform: scale(1.1);
+            box-shadow: 0 15px 40px rgba(99, 102, 241, 0.5);
+        }
+
+        /* Tooltip */
+        .tooltip {
+            position: relative;
+        }
+
+        .tooltip::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 0.5rem 1rem;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            font-size: 0.8rem;
+            border-radius: 5px;
+            white-space: nowrap;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            margin-bottom: 10px;
+        }
+
+        .tooltip:hover::after {
+            opacity: 1;
+            visibility: visible;
+        }
+    </style>
+</head>
+<body>
+    <!-- Background Animation -->
+    <div class="bg-animation"></div>
+
+    <!-- Navigation -->
+    <nav>
+        <div class="logo">
+            <div class="logo-icon">🔬</div>
+            Simulations Lab
+        </div>
+        <div class="nav-links">
+            <a href="#home">홈</a>
+            <a href="#simulations">시뮬레이션</a>
+            <a href="#about">소개</a>
+            <a href="#contact">문의</a>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero" id="home">
+        <h1>인터랙티브<br><span>시뮬레이션 연구소</span></h1>
+        <p>물리학, 수학, 과학의 원리를 직접 체험하고 배워보세요. 
+           실시간 시뮬레이션으로 복잡한 개념을 쉽게 이해할 수 있습니다.</p>
+        
+        <div class="hero-stats">
+            <div class="stat">
+                <div class="stat-number">10+</div>
+                <div class="stat-label">시뮬레이션</div>
+            </div>
+            <div class="stat">
+                <div class="stat-number">실시간</div>
+                <div class="stat-label">인터랙션</div>
+            </div>
+            <div class="stat">
+                <div class="stat-number">무료</div>
+                <div class="stat-label">이용 가능</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Search -->
+    <div class="search-container">
+        <span class="search-icon">🔍</span>
+        <input type="text" class="search-input" placeholder="시뮬레이션 검색..." id="searchInput">
+    </div>
+
+    <!-- Category Filter -->
+    <div class="category-filter">
+        <button class="filter-btn active" data-category="all">전체</button>
+        <button class="filter-btn" data-category="physics">물리학</button>
+        <button class="filter-btn" data-category="math">수학</button>
+        <button class="filter-btn" data-category="chemistry">화학</button>
+        <button class="filter-btn" data-category="biology">생물학</button>
+    </div>
+
+    <!-- Cards Section -->
+    <section class="cards-container" id="simulations">
+        <h2 class="section-title">시뮬레이션 목록</h2>
+        <p class="section-subtitle">원하는 시뮬레이션을 선택하여 체험해보세요</p>
+        
+        <div class="cards-grid" id="cardsGrid">
+            <!-- Physics Simulation Card -->
+            <a href="physic_simulation.html" class="card" data-category="physics">
+                <div class="card-preview">
+                    <div class="physics-balls">
+                        <div class="physics-ball"></div>
+                        <div class="physics-ball"></div>
+                        <div class="physics-ball"></div>
+                    </div>
+                </div>
+                <div class="card-content">
+                    <span class="card-badge new">🔥 인기</span>
+                    <h3>⚛️ 물리 시뮬레이션</h3>
+                    <p>중력, 충돌, 마찰력 등 다양한 물리 법칙을 실시간으로 체험해보세요. 
+                       공을 던지고, 물체를 쌓고, 물리 엔진의 마법을 경험하세요!</p>
+                    <div class="card-footer">
+                        <div class="card-tags">
+                            <span class="tag">중력</span>
+                            <span class="tag">충돌</span>
+                            <span class="tag">탄성</span>
+                        </div>
+                        <div class="card-arrow">→</div>
+                    </div>
+                </div>
+            </a>
+
+            <!-- Wave Simulation Card (Coming Soon) -->
+            <div class="card coming-soon" data-category="physics">
+                <div class="card-preview">
+                    <div class="wave-animation"></div>
+                    <div class="card-preview-icon">🌊</div>
+                </div>
+                <div class="card-content">
+                    <span class="card-badge coming">준비중</span>
+                    <h3>🌊 파동 시뮬레이션</h3>
+                    <p>음파, 빛의 파동, 물결 등 다양한 파동 현상을 시각적으로 
+                       이해하고 주파수와 진폭을 조절해보세요.</p>
+                    <div class="card-footer">
+                        <div class="card-tags">
+                            <span class="tag">음파</span>
+                            <span class="tag">광파</span>
+                            <span class="tag">진동</span>
+                        </div>
+                        <div class="card-arrow">→</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pendulum Simulation Card (Coming Soon) -->
+            <div class="card coming-soon" data-category="physics">
+                <div class="card-preview">
+                    <div class="card-preview-icon">🎯</div>
+                </div>
+                <div class="card-content">
+                    <span class="card-badge coming">준비중</span>
+                    <h3>🎯 진자 운동</h3>
+                    <p>단진자, 복합진자, 이중진자의 운동을 관찰하고 
+                       초기 조건에 따른 카오스 현상을 탐구해보세요.</p>
+                    <div class="card-footer">
+                        <div class="card-tags">
+                            <span class="tag">진자</span>
+                            <span class="tag">주기</span>
+                            <span class="tag">카오스</span>
+                        </div>
+                        <div class="card-arrow">→</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Orbital Simulation Card (Coming Soon) -->
+            <div class="card coming-soon" data-category="physics">
+                <div class="card-preview">
+                    <div class="card-preview-icon">🪐</div>
+                </div>
+                <div class="card-content">
+                    <span class="card-badge coming">준비중</span>
+                    <h3>🪐 궤도 역학</h3>
+                    <p>행성의 공전, 위성 궤도, 중력 어시스트 등 
+                       천체 역학의 기본 원리를 시뮬레이션합니다.</p>
+                    <div class="card-footer">
+                        <div class="card-tags">
+                            <span class="tag">중력</span>
+                            <span class="tag">궤도</span>
+                            <span class="tag">케플러</span>
+                        </div>
+                        <div class="card-arrow">→</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Fractal Card (Coming Soon) -->
+            <div class="card coming-soon" data-category="math">
+                <div class="card-preview">
+                    <div class="card-preview-icon">🔷</div>
+                </div>
+                <div class="card-content">
+                    <span class="card-badge coming">준비중</span>
+                    <h3>🔷 프랙탈 생성기</h3>
+                    <p>만델브로트 집합, 줄리아 집합, 시어핀스키 삼각형 등 
+                       아름다운 프랙탈 패턴을 생성하고 탐색해보세요.</p>
+                    <div class="card-footer">
+                        <div class="card-tags">
+                            <span class="tag">수학</span>
+                            <span class="tag">패턴</span>
+                            <span class="tag">무한</span>
+                        </div>
+                        <div class="card-arrow">→</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Molecule Card (Coming Soon) -->
+            <div class="card coming-soon" data-category="chemistry">
+                <div class="card-preview">
+                    <div class="card-preview-icon">🧪</div>
+                </div>
+                <div class="card-content">
+                    <span class="card-badge coming">준비중</span>
+                    <h3>🧪 분자 구조</h3>
+                    <p>3D로 분자 구조를 탐색하고 화학 결합의 원리를 
+                       시각적으로 이해해보세요.</p>
+                    <div class="card-footer">
+                        <div class="card-tags">
+                            <span class="tag">분자</span>
+                            <span class="tag">결합</span>
+                            <span class="tag">3D</span>
+                        </div>
+                        <div class="card-arrow">→</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Newsletter -->
+    <section class="newsletter">
+        <h3>🔔 새 시뮬레이션 알림 받기</h3>
+        <p>새로운 시뮬레이션이 추가되면 가장 먼저 알려드립니다!</p>
+        <div class="newsletter-form">
+            <input type="email" placeholder="이메일 주소 입력...">
+            <button>구독하기</button>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer id="contact">
+        <div class="social-links">
+            <a href="#" class="tooltip" data-tooltip="GitHub">💻</a>
+            <a href="#" class="tooltip" data-tooltip="Twitter">🐦</a>
+            <a href="#" class="tooltip" data-tooltip="YouTube">📺</a>
+            <a href="#" class="tooltip" data-tooltip="Discord">💬</a>
+        </div>
+        <div class="footer-links">
+            <a href="#">이용약관</a>
+            <a href="#">개인정보처리방침</a>
+            <a href="#">오픈소스</a>
+            <a href="#">버그 신고</a>
+        </div>
+        <p>© 2024 Interactive Simulations Lab. Made with ❤️ for Science Education</p>
+    </footer>
+
+    <!-- FAB -->
+    <div class="fab tooltip" data-tooltip="맨 위로" onclick="scrollToTop()">↑</div>
+
+    <script>
+        // Category Filter
+        const filterBtns = document.querySelectorAll('.filter-btn');
+        const cards = document.querySelectorAll('.card');
+
+        filterBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                // Remove active from all buttons
+                filterBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                const category = btn.dataset.category;
+
+                cards.forEach(card => {
+                    if (category === 'all' || card.dataset.category === category) {
+                        card.style.display = 'block';
+                        card.style.animation = 'fadeIn 0.5s ease';
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+            });
+        });
+
+        // Search Functionality
+        const searchInput = document.getElementById('searchInput');
+        searchInput.addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            
+            cards.forEach(card => {
+                const title = card.querySelector('h3').textContent.toLowerCase();
+                const desc = card.querySelector('p').textContent.toLowerCase();
+                const tags = Array.from(card.querySelectorAll('.tag'))
+                    .map(tag => tag.textContent.toLowerCase())
+                    .join(' ');
+                
+                if (title.includes(searchTerm) || desc.includes(searchTerm) || tags.includes(searchTerm)) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        });
+
+        // Scroll to Top
+        function scrollToTop() {
+            window.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
+        }
+
+        // Show/Hide FAB based on scroll
+        const fab = document.querySelector('.fab');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 300) {
+                fab.style.opacity = '1';
+                fab.style.pointerEvents = 'auto';
+            } else {
+                fab.style.opacity = '0';
+                fab.style.pointerEvents = 'none';
+            }
+        });
+
+        // Initial state
+        fab.style.opacity = '0';
+        fab.style.pointerEvents = 'none';
+
+        // Add fade in animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes fadeIn {
+                from { opacity: 0; transform: translateY(20px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+        `;
+        document.head.appendChild(style);
+
+        // Animate cards on load
+        cards.forEach((card, index) => {
+            card.style.animation = `fadeIn 0.5s ease ${index * 0.1}s both`;
+        });
+
+        // Coming soon click handler
+        document.querySelectorAll('.card.coming-soon').forEach(card => {
+            card.addEventListener('click', () => {
+                alert('🚧 이 시뮬레이션은 현재 개발 중입니다!\n새 시뮬레이션 알림을 구독하시면 출시 시 알려드립니다.');
+            });
+        });
+    </script>
+</body>
+</html>
