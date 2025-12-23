@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>자유낙하 시뮬레이션 (Web Ver)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/poly-decomp@0.3.0/build/decomp.min.js"></script>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; font-family: 'Malgun Gothic', sans-serif; background: #eee; }
+        canvas { display: block; background: #fff; }
+        
+        /* UI 오버레이 스타일 */
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        .interactive { pointer-events: auto; }
+        
+        /* 속성 편집 박스 */
+        .prop-box {
+            position: absolute;
+            width: 240px;
+            background: rgba(220, 220, 220, 0.95);
+            border: 2px solid #000;
+            padding: 10px;
+            display: none;
+            box-shadow: 2px 2px 10px rgba(0,0,0,0.2);
+        }
+        .prop-row { display: flex; justify-content: space-between; margin-bottom: 5px; align-items: center; }
+        .prop-label { font-weight: bold; }
+        .prop-input { width: 80px; text-align: right; }
+        .btn-close { position: absolute; top: 5px; right: 5px; background: #ccc; border: 1px solid #000; cursor: pointer; width: 20px; height: 20px; line-height: 18px; text-align: center; }
+        .btn-delete { width: 100%; background: #dc143c; color: white; border: none; padding: 5px; cursor: pointer; margin-top: 10px; border-radius: 5px; }
+        
+        /* 상단 컨트롤 패널 */
+        #top-panel { position: absolute; top: 10px; right: 20px; text-align: right; }
+        #reset-btn {
+            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+            background: #0078c8; color: white; border: none; padding: 8px 30px;
+            border-radius: 5px; font-size: 16px; cursor: pointer; display: none;
+        }
+        #info-panel { position: absolute; top: 10px; left: 10px; font-size: 16px; color: black; }
+        #water-help { position: absolute; top: 40px; left: 10px; font-size: 14px; color: darkgreen; }
+        #mode-msg { 
+            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+            color: blue; font-weight: bold; display: none; 
+        }
+    </style>
+</head>
+<body>
+
+<canvas id="world"></canvas>
+
+<div id="ui-layer">
+    <div id="info-panel">Mode: Placing | Shape: circle</div>
+    <div id="water-help">Press 'W' to draw water area</div>
+    <div id="mode-msg">DRAWING WATER - Click and drag</div>
+    
+    <button id="reset-btn" class="interactive">시뮬레이션 초기화</button>
+
+    <div id="top-panel" class="interactive">
+        <label>rho: <input type="number" id="rho-input" value="1.225" step="0.001" style="width: 60px;"> kg/m³</label>
+    </div>
+
+    <div id="obj-props" class="prop-box interactive">
+        <div class="btn-close" onclick="ui.closeObjProps()">X</div>
+        <div class="prop-row"><span class="prop-label">이름</span><input type="text" id="op-name" class="prop-input"></div>
+        <div class="prop-row"><span class="prop-label">단면적</span><span id="op-area"></span></div>
+        <div class="prop-row"><span class="prop-label">항력계수</span><input type="number" id="op-cd" class="prop-input" step="0.1"></div>
+        <div class="prop-row"><span class="prop-label">밀도</span><input type="number" id="op-density" class="prop-input" step="10"></div>
+        <div class="prop-row"><span class="prop-label">고정</span><input type="checkbox" id="op-fixed"></div>
+        <button class="btn-delete" onclick="ui.deleteObj()">삭제</button>
+    </div>
+
+    <div id="water-props" class="prop-box interactive">
+        <div class="btn-close" onclick="ui.closeWaterProps()">X</div>
+        <div class="prop-row"><span class="prop-label">이름</span><input type="text" id="wp-name" class="prop-input"></div>
+        <div class="prop-row"><span class="prop-label">농도</span><input type="number" id="wp-density" class="prop-input"></div>
+        <div class="prop-row"><span class="prop-label">점성(k)</span><input type="number" id="wp-drag" class="prop-input"></div>
+        <button class="btn-delete" onclick="ui.deleteWater()">삭제</button>
+    </div>
+</div>
+
+<script>
+// ------------------------------
+// 엔진 및 기본 설정
+// ------------------------------
+const Engine = Matter.Engine,
+      Render = Matter.Render,
+      Runner = Matter.Runner,
+      Bodies = Matter.Bodies,
+      Body = Matter.Body,
+      Composite = Matter.Composite,
+      Events = Matter.Events,
+      Vector = Matter.Vector,
+      Vertices = Matter.Vertices,
+      Mouse = Matter.Mouse,
+      Query = Matter.Query;
+
+// 초기화
+const engine = Engine.create();
+engine.gravity.y = 0.9;
+const world = engine.world;
+
+const canvas = document.getElementById('world');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+const ctx = canvas.getContext('2d');
+
+// 상수
+const PIXELS_PER_METER = 100;
+const FPS = 60;
+const RHO_AIR_DEFAULT = 1.225;
+
+// 상태 변수
+let state = {
+    running: false,
+    currentShape: 'circle',
+    drawingMode: false,
+    creatingWater: false,
+    cogMode: false,
+    rho: RHO_AIR_DEFAULT,
+    objects: [], 
+    waterAreas: [],
+    initialStates: [], 
+    
+    // 드로잉 관련
+    drawPoints: [],
+    dotPoints: [],
+    startPos: null,
+    previewPos: null,
+    
+    // 선택 관련
+    selectedObj: null,
+    selectedWater: null,
+    cogDragging: null 
+};
+
+// 바닥 생성
+const floor = Bodies.rectangle(canvas.width/2, canvas.height - 10, canvas.width, 20, { 
+    isStatic: true, friction: 0.8, render: { fillStyle: '#006400' } 
+});
+Composite.add(world, floor);
+
+// ------------------------------
+// 유틸리티 함수
+// ------------------------------
+function calcArea(body) {
+    return body.area / (PIXELS_PER_METER * PIXELS_PER_METER);
+}
+
+function updateBodyMass(obj) {
+    const body = obj.body;
+    const props = obj.props;
+    if (body.isStatic) return;
+    
+    const area = props.A || calcArea(body);
+    const density = props.density || 10.0;
+    const mass = Math.max(0.1, density * area); 
+    Body.setMass(body, mass);
+}
+
+// ------------------------------
+// 도형 생성
+// ------------------------------
+let shapeCounts = { circle: 0, box: 0, triangle: 0, diamond: 0, poly: 0, water: 0 };
+
+function createObject(type, x, y, customPoints=null) {
+    let body;
+    let name = `${type} ${++shapeCounts[type] || 1}`;
+    let density = 700;
+    let Cd = 0.47;
+
+    if (type === 'circle') {
+        body = Bodies.circle(x, y, 30);
+    } else if (type === 'box') {
+        body = Bodies.rectangle(x, y, 60, 60);
+    } else if (type === 'triangle') {
+        body = Bodies.fromVertices(x, y, [[{x:-30,y:30}, {x:30,y:30}, {x:0,y:-30}]]);
+    } else if (type === 'diamond') {
+        body = Bodies.fromVertices(x, y, [[{x:0,y:-40}, {x:30,y:0}, {x:0,y:40}, {x:-30,y:0}]]);
+    } else if (type === 'poly' && customPoints) {
+        body = Bodies.fromVertices(x, y, [customPoints]);
+        name = `poly ${++shapeCounts.poly}`;
+    }
+
+    if (!body) return;
+
+    body.restitution = 0.4;
+    body.friction = 0.7;
+
+    const obj = {
+        body: body,
+        props: {
+            name: name,
+            Cd: Cd,
+            density: density,
+            fixed: false,
+            A: calcArea(body),
+            hasCog: false,
+            cogOffset: {x:0, y:0}
+        }
+    };
+
+    updateBodyMass(obj);
+    Composite.add(world, body);
+    state.objects.push(obj);
+}
+
+// ------------------------------
+// 물리학 커스텀 업데이트 (매 프레임)
+// ------------------------------
+Events.on(engine, 'beforeUpdate', function(event) {
+    // 시뮬레이션 대기 상태: 중력 제거 및 물체 고정
+    if (!state.running) {
+        engine.gravity.y = 0; 
+        
+        state.objects.forEach(obj => {
+            const body = obj.body;
+            // 드래그 중인 물체 제외하고 속도 0으로 고정 (위치 고정)
+            if (mouseConstraint.body !== body) {
+                Body.setVelocity(body, { x: 0, y: 0 });
+                Body.setAngularVelocity(body, 0);
+            }
+        });
+        return; 
+    } else {
+        engine.gravity.y = 0.9;
+    }
+
+    // --- 시뮬레이션 물리 계산 ---
+
+    state.objects.forEach(obj => {
+        const body = obj.body;
+        if (body.isStatic) return;
+
+        const props = obj.props;
+        let fluidDensity = state.rho;
+        let isInWater = false;
+        let dragK = 0;
+
+        // 1. 물 체크
+        for (let w of state.waterAreas) {
+            if (Matter.Bounds.overlaps(body.bounds, w.bounds)) {
+                isInWater = true;
+                fluidDensity = w.props.density;
+                dragK = w.props.drag_k;
+                
+                // 부력 적용
+                const buoyancyForce = fluidDensity * props.A * engine.gravity.y * 0.001; 
+                Body.applyForce(body, body.position, { x: 0, y: -buoyancyForce });
+                
+                // 물의 점성 항력
+                Body.applyForce(body, body.position, {
+                    x: -dragK * body.velocity.x * 0.001,
+                    y: -dragK * body.velocity.y * 0.001
+                });
+                
+                break; 
+            }
+        }
+
+        // 2. 공기 항력 (일반 항력)
+        const speedSq = Vector.magnitudeSquared(body.velocity);
+        const speed = Math.sqrt(speedSq);
+        
+        if (speed > 0.1) {
+            if (!isInWater) {
+                const dragMag = 0.5 * fluidDensity * props.Cd * props.A * (speedSq/10000);
+                const dragDir = Vector.neg(Vector.normalise(body.velocity));
+                Body.applyForce(body, body.position, Vector.mult(dragDir, dragMag));
+            }
+        }
+    });
+});
+
+// ------------------------------
+// 렌더링 루프
+// ------------------------------
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // 바닥
+    ctx.fillStyle = '#006400';
+    ctx.fillRect(0, canvas.height - 10, canvas.width, 10);
+
+    // 물 영역
+    state.waterAreas.forEach(w => {
+        ctx.fillStyle = 'rgba(173, 216, 230, 0.5)';
+        ctx.fillRect(w.rect.x, w.rect.y, w.rect.w, w.rect.h);
+        if (state.selectedWater === w) {
+            ctx.strokeStyle = 'red';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(w.rect.x, w.rect.y, w.rect.w, w.rect.h);
+        }
+    });
+
+    // 물 생성 중 프리뷰
+    if (state.creatingWater && state.startPos) {
+        const mx = mouse.position.x;
+        const my = mouse.position.y;
+        const sx = state.startPos.x;
+        const sy = state.startPos.y;
+        ctx.strokeStyle = 'blue';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(Math.min(sx, mx), Math.min(sy, my), Math.abs(mx-sx), Math.abs(my-sy));
+    }
+
+    // 오브젝트 그리기
+    state.objects.forEach(obj => {
+        const body = obj.body;
+        ctx.beginPath();
+        const vertices = body.vertices;
+        ctx.moveTo(vertices[0].x, vertices[0].y);
+        for (let j = 1; j < vertices.length; j += 1) {
+            ctx.lineTo(vertices[j].x, vertices[j].y);
+        }
+        ctx.lineTo(vertices[0].x, vertices[0].y);
+        
+        // 고정 시 색상 변경 로직
+        if (state.selectedObj === obj) {
+            ctx.fillStyle = '#eee'; // 선택됨
+        } else if (obj.props.fixed) {
+            ctx.fillStyle = '#ffcccc'; // 고정됨 (옅은 붉은색)
+        } else {
+            ctx.fillStyle = '#fff'; // 일반
+        }
+        
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = (state.selectedObj === obj) ? 'red' : '#787878';
+        ctx.stroke();
+
+        // [수정] 속도 라벨 표시 로직
+        // 정지 상태일 때는 저장된 속도(savedVelocity)를 사용하여 표시
+        let displayVelocity = body.velocity;
+        if (!state.running && obj.savedVelocity) {
+            displayVelocity = obj.savedVelocity;
+        }
+
+        const speedVal = Vector.magnitude(displayVelocity);
+        
+        // 시뮬레이션 중이거나, 속도가 조금이라도 있으면 표시
+        if (state.running || speedVal > 0.1) {
+            const speedMetric = speedVal / (PIXELS_PER_METER/100); 
+            ctx.fillStyle = obj.props.fixed ? 'red' : 'black';
+            ctx.font = '12px Malgun Gothic';
+            ctx.fillText(speedMetric.toFixed(1) + " m/s", body.position.x + 10, body.position.y - 10);
+        }
+
+        // COG 마커
+        if (obj.props.hasCog) {
+            const cogWorld = Vector.add(body.position, Vector.rotate(obj.props.cogOffset, body.angle));
+            ctx.beginPath();
+            ctx.arc(cogWorld.x, cogWorld.y, 5, 0, 2 * Math.PI);
+            ctx.fillStyle = 'red';
+            ctx.fill();
+        }
+    });
+
+    // 프리뷰 (도형 배치 모드)
+    if (!state.running && !state.drawingMode && !state.creatingWater && state.previewPos) {
+        ctx.strokeStyle = '#aaa';
+        ctx.lineWidth = 2;
+        const x = state.previewPos.x;
+        const y = state.previewPos.y;
+        
+        ctx.beginPath();
+        if (state.currentShape === 'circle') ctx.arc(x, y, 30, 0, Math.PI*2);
+        else if (state.currentShape === 'box') ctx.rect(x-30, y-30, 60, 60);
+        else if (state.currentShape === 'triangle') { ctx.moveTo(x-30,y+30); ctx.lineTo(x+30,y+30); ctx.lineTo(x,y-30); ctx.closePath(); }
+        else if (state.currentShape === 'diamond') { ctx.moveTo(x,y-40); ctx.lineTo(x+30,y); ctx.lineTo(x,y+40); ctx.lineTo(x-30,y); ctx.closePath(); }
+        ctx.stroke();
+    }
+
+    // 드로잉 패스
+    if (state.drawingMode && state.drawPoints.length > 0) {
+        ctx.beginPath();
+        ctx.moveTo(state.drawPoints[0].x, state.drawPoints[0].y);
+        for(let p of state.drawPoints) ctx.lineTo(p.x, p.y);
+        ctx.strokeStyle = '#009600';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+    }
+    
+    // Dot 드로잉
+    if (state.drawingMode && state.dotPoints.length > 0) {
+        ctx.fillStyle = 'black';
+        for(let p of state.dotPoints) {
+            ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI*2); ctx.fill();
+        }
+    }
+
+    requestAnimationFrame(draw);
+}
+
+
+// ------------------------------
+// 입력 핸들링
+// ------------------------------
+const mouse = Mouse.create(canvas);
+const mouseConstraint = Matter.MouseConstraint.create(engine, {
+    mouse: mouse,
+    constraint: { stiffness: 0.2, render: { visible: false } }
+});
+Composite.add(world, mouseConstraint);
+
+// 키보드 입력
+window.addEventListener('keydown', (e) => {
+    const key = e.key.toLowerCase();
+    
+    if (e.target.tagName === 'INPUT') {
+        if (key === 'enter') e.target.blur();
+        return;
+    }
+
+    if (key === ' ') {
+        toggleSimulation();
+    } else if (key === 's') {
+        state.drawingMode = !state.drawingMode;
+        state.creatingWater = false;
+        state.cogMode = false;
+    } else if (key === 'w') {
+        state.creatingWater = !state.creatingWater;
+        state.drawingMode = false;
+        state.cogMode = false;
+    } else if (key === 'm') {
+        state.cogMode = !state.cogMode;
+        state.drawingMode = false;
+        state.creatingWater = false;
+    } else if (key === 'r') {
+        resetSimulation();
+    }
+    
+    if (!state.running && !state.drawingMode && !state.creatingWater && !state.cogMode) {
+        if (key === 'c') state.currentShape = 'circle';
+        if (key === 'b') state.currentShape = 'box';
+        if (key === 't') state.currentShape = 'triangle';
+        if (key === 'd') state.currentShape = 'diamond'; 
+    }
+
+    updateUI();
+});
+
+// 마우스 이벤트
+canvas.addEventListener('mousedown', (e) => {
+    const x = e.clientX, y = e.clientY;
+
+    if (e.button === 2) {
+        handleRightClick(x, y);
+        return;
+    }
+
+    if (state.cogMode) {
+        let found = false;
+        state.objects.forEach(obj => {
+            if (obj.props.hasCog) {
+                const cogWorld = Vector.add(obj.body.position, Vector.rotate(obj.props.cogOffset, obj.body.angle));
+                if (Vector.magnitude(Vector.sub({x,y}, cogWorld)) < 10) {
+                    state.cogDragging = { obj, offset: Vector.sub({x,y}, obj.body.position) }; 
+                    found = true;
+                }
+            }
+        });
+        if (!found) {
+            const hits = Query.point(state.objects.map(o=>o.body), {x,y});
+            const hit = hits[0];
+            if (hit) {
+                const parent = hit.parent || hit;
+                const obj = state.objects.find(o => o.body === parent);
+                if (obj) {
+                    obj.props.hasCog = true;
+                    obj.props.cogOffset = Vector.rotate(Vector.sub({x,y}, parent.position), -parent.angle);
+                }
+            }
+        }
+        return;
+    }
+
+    if (state.creatingWater) {
+        state.startPos = {x, y};
+        return;
+    }
+
+    if (state.drawingMode) {
+        if (e.shiftKey) {
+            state.drawPoints = [{x,y}];
+        } else {
+            state.dotPoints = [{x,y}]; 
+        }
+        return;
+    }
+
+    const hits = Query.point(state.objects.map(o=>o.body), {x,y});
+    const hit = hits[0];
+    if (hit) {
+        const parent = hit.parent || hit;
+        state.selectedObj = state.objects.find(o => o.body === parent);
+        state.selectedWater = null;
+        ui.openObjProps();
+    } else {
+        let clickedWater = false;
+        for (let w of state.waterAreas) {
+             if (x >= w.rect.x && x <= w.rect.x+w.rect.w && y >= w.rect.y && y <= w.rect.y+w.rect.h) {
+                 state.selectedWater = w;
+                 state.selectedObj = null;
+                 clickedWater = true;
+                 ui.openWaterProps();
+                 break;
+             }
+        }
+        
+        if (!clickedWater && !state.running) {
+            createObject(state.currentShape, x, y);
+            state.selectedObj = null;
+            state.selectedWater = null;
+            ui.closeObjProps();
+            ui.closeWaterProps();
+        }
+    }
+});
+
+canvas.addEventListener('mousemove', (e) => {
+    const x = e.clientX, y = e.clientY;
+    state.previewPos = {x, y};
+
+    if (state.cogDragging) {
+        const obj = state.cogDragging.obj;
+        const localPos = Vector.rotate(Vector.sub({x,y}, obj.body.position), -obj.body.angle);
+        obj.props.cogOffset = localPos;
+    }
+    else if (state.drawingMode) {
+        if (e.buttons === 1) { 
+            if (state.drawPoints.length > 0) state.drawPoints.push({x,y});
+            if (state.dotPoints.length > 0 && Vector.magnitude(Vector.sub({x,y}, state.dotPoints[state.dotPoints.length-1])) > 8) {
+                state.dotPoints.push({x,y});
+                createObject('circle', x, y);
+                const lastObj = state.objects[state.objects.length-1];
+                lastObj.props.fixed = true;
+                Body.setStatic(lastObj.body, true);
+                lastObj.props.name = 'drawn_point';
+            }
+        }
+    }
+});
+
+canvas.addEventListener('mouseup', (e) => {
+    const x = e.clientX, y = e.clientY;
+
+    if (state.cogDragging) {
+        state.cogDragging = null;
+    }
+    
+    if (state.creatingWater && state.startPos) {
+        const sx = state.startPos.x, sy = state.startPos.y;
+        const w = Math.abs(x - sx), h = Math.abs(y - sy);
+        if (w > 5 && h > 5) {
+            const rx = Math.min(x, sx), ry = Math.min(y, sy);
+            state.waterAreas.push({
+                rect: {x:rx, y:ry, w, h},
+                bounds: {min:{x:rx,y:ry}, max:{x:rx+w, y:ry+h}},
+                props: { name: `Water ${++shapeCounts.water}`, density: 1000, drag_k: 15 }
+            });
+        }
+        state.startPos = null;
+        state.creatingWater = false;
+        updateUI();
+    }
+
+    if (state.drawingMode && state.drawPoints.length > 0) {
+        if (Vector.magnitude(Vector.sub(state.drawPoints[0], state.drawPoints[state.drawPoints.length-1])) < 30 && state.drawPoints.length > 3) {
+            let cx=0, cy=0;
+            state.drawPoints.forEach(p=>{cx+=p.x; cy+=p.y});
+            cx /= state.drawPoints.length; cy /= state.drawPoints.length;
+            const verts = state.drawPoints.map(p => ({x: p.x - cx, y: p.y - cy})); 
+            createObject('poly', cx, cy, verts);
+        }
+        state.drawPoints = [];
+    }
+    state.dotPoints = [];
+});
+
+function handleRightClick(x, y) {
+    if (state.cogMode) {
+        state.objects.forEach(obj => {
+            if(obj.props.hasCog) {
+                 const cogWorld = Vector.add(obj.body.position, Vector.rotate(obj.props.cogOffset, obj.body.angle));
+                 if (Vector.magnitude(Vector.sub({x,y}, cogWorld)) < 10) {
+                     obj.props.hasCog = false;
+                 }
+            }
+        });
+        return;
+    }
+    
+    state.selectedObj = null;
+    state.selectedWater = null;
+    ui.closeObjProps();
+    ui.closeWaterProps();
+}
+
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+
+// ------------------------------
+// 로직 제어 함수
+// ------------------------------
+function toggleSimulation() {
+    // 1. 시뮬레이션을 멈출 때: 현재 운동 상태(속도)를 저장
+    if (state.running) {
+        state.objects.forEach(obj => {
+            // 고정되지 않은 객체만 저장
+            if (!obj.props.fixed && !obj.body.isStatic) {
+                obj.savedVelocity = { ...obj.body.velocity };
+                obj.savedAngularVelocity = obj.body.angularVelocity;
+            }
+        });
+    }
+
+    // 2. 시뮬레이션을 시작/재개할 때
+    if (!state.running) {
+        // (기존) 리셋용 초기 상태 저장 - 멈춘 상태(속도0)로 저장됨
+        state.initialStates = state.objects.map(obj => ({
+            obj: obj,
+            pos: { ...obj.body.position },
+            angle: obj.body.angle,
+            vel: { ...obj.body.velocity },
+            angVel: obj.body.angularVelocity
+        }));
+        
+        state.objects.forEach(o => {
+            if (!o.props.fixed) {
+                Body.setStatic(o.body, false);
+                
+                // 저장해둔 속도가 있다면 복원하여 운동 상태 유지
+                if (o.savedVelocity) {
+                    Body.setVelocity(o.body, o.savedVelocity);
+                    Body.setAngularVelocity(o.body, o.savedAngularVelocity);
+                }
+            }
+        });
+    }
+    
+    state.running = !state.running;
+    updateUI();
+}
+
+function resetSimulation() {
+    state.running = false;
+    Composite.clear(world, false); 
+    Composite.add(world, [floor, mouseConstraint]);
+    state.objects = [];
+    state.waterAreas = [];
+    shapeCounts = { circle: 0, box: 0, triangle: 0, diamond: 0, poly: 0, water: 0 };
+    state.selectedObj = null;
+    state.selectedWater = null;
+    ui.closeObjProps();
+    ui.closeWaterProps();
+    updateUI();
+}
+
+document.getElementById('reset-btn').addEventListener('click', () => {
+    state.running = false;
+    state.initialStates.forEach(s => {
+        if (!state.objects.includes(s.obj)) return;
+        Body.setPosition(s.obj.body, s.pos);
+        Body.setAngle(s.obj.body, s.angle);
+        Body.setVelocity(s.obj.body, s.vel);
+        Body.setAngularVelocity(s.obj.body, s.angVel);
+        if (!s.obj.props.fixed) Body.setStatic(s.obj.body, false); 
+    });
+    updateUI();
+});
+
+document.getElementById('rho-input').addEventListener('change', (e) => {
+    state.rho = parseFloat(e.target.value);
+});
+
+
+// ------------------------------
+// UI 업데이트
+// ------------------------------
+function updateUI() {
+    let mode = state.running ? "Simulating" : "Placing";
+    if (state.drawingMode) mode = "Drawing";
+    else if (state.creatingWater) mode = "Drawing Water";
+    if (state.cogMode) mode = "COG Mode";
+    
+    document.getElementById('info-panel').innerText = `Mode: ${mode} | Shape: ${state.currentShape}`;
+    document.getElementById('mode-msg').style.display = state.creatingWater ? 'block' : 'none';
+    document.getElementById('reset-btn').style.display = state.running ? 'block' : 'none';
+}
+
+const ui = {
+    openObjProps: () => {
+        const obj = state.selectedObj;
+        if (!obj) return;
+        const p = document.getElementById('obj-props');
+        p.style.display = 'block';
+        p.style.top = '60px'; p.style.right = '20px';
+        
+        document.getElementById('op-name').value = obj.props.name;
+        document.getElementById('op-area').innerText = obj.props.A.toFixed(4) + " m²";
+        document.getElementById('op-cd').value = obj.props.Cd;
+        document.getElementById('op-density').value = obj.props.density;
+        document.getElementById('op-fixed').checked = obj.props.fixed;
+    },
+    closeObjProps: () => {
+        document.getElementById('obj-props').style.display = 'none';
+    },
+    deleteObj: () => {
+        if (state.selectedObj) {
+            Composite.remove(world, state.selectedObj.body);
+            state.objects = state.objects.filter(o => o !== state.selectedObj);
+            state.selectedObj = null;
+            ui.closeObjProps();
+        }
+    },
+    
+    openWaterProps: () => {
+        const w = state.selectedWater;
+        if (!w) return;
+        const p = document.getElementById('water-props');
+        p.style.display = 'block';
+        p.style.top = '60px'; p.style.right = '280px';
+        
+        document.getElementById('wp-name').value = w.props.name;
+        document.getElementById('wp-density').value = w.props.density;
+        document.getElementById('wp-drag').value = w.props.drag_k;
+    },
+    closeWaterProps: () => {
+        document.getElementById('water-props').style.display = 'none';
+    },
+    deleteWater: () => {
+        if (state.selectedWater) {
+            state.waterAreas = state.waterAreas.filter(w => w !== state.selectedWater);
+            state.selectedWater = null;
+            ui.closeWaterProps();
+        }
+    }
+};
+
+document.getElementById('op-name').addEventListener('input', e => { if(state.selectedObj) state.selectedObj.props.name = e.target.value; });
+document.getElementById('op-cd').addEventListener('change', e => { if(state.selectedObj) state.selectedObj.props.Cd = parseFloat(e.target.value); });
+document.getElementById('op-density').addEventListener('change', e => { 
+    if(state.selectedObj) {
+        state.selectedObj.props.density = parseFloat(e.target.value);
+        updateBodyMass(state.selectedObj);
+    }
+});
+document.getElementById('op-fixed').addEventListener('change', e => { 
+    if(state.selectedObj) {
+        state.selectedObj.props.fixed = e.target.checked;
+        Body.setStatic(state.selectedObj.body, e.target.checked);
+    }
+});
+
+document.getElementById('wp-name').addEventListener('input', e => { if(state.selectedWater) state.selectedWater.props.name = e.target.value; });
+document.getElementById('wp-density').addEventListener('change', e => { if(state.selectedWater) state.selectedWater.props.density = parseFloat(e.target.value); });
+document.getElementById('wp-drag').addEventListener('change', e => { if(state.selectedWater) state.selectedWater.props.drag_k = parseFloat(e.target.value); });
+
+
+// 실행 시작
+Runner.run(Runner.create(), engine);
+requestAnimationFrame(draw);
+
+</script>
+</body>
+</html>
